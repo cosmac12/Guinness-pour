@@ -1,0 +1,828 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Guinness Pour — Playable Prototype</title>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #0a0a0a;
+    color: #f2f2f2;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-auto-rows: 1fr;
+    gap: 12px;
+    height: 100%;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; grid-auto-rows: auto 1fr; }
+  }
+  .panel {
+    background: #141414;
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset, 0 8px 30px rgba(0,0,0,0.45);
+  }
+  #game {
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  #canvas {
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(1200px 700px at 70% 120%, #0f0f0f 0%, #0b0b0b 50%, #070707 100%);
+    border-radius: 10px;
+  }
+  .hud {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    font-size: 14px;
+  }
+  .hud .item {
+    background: #101010;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .hud .label {
+    font-size: 12px;
+    opacity: 0.7;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hud .value {
+    font-weight: 700;
+    font-size: 18px;
+  }
+  .controls {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.35;
+    opacity: 0.9;
+  }
+  .big {
+    font-size: 14px;
+  }
+  .btnrow {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    background: #222;
+    color: #eee;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  .badge {
+    display: inline-block;
+    background: #1b1b1b;
+    border: 1px solid #2d2d2d;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    margin-right: 6px;
+  }
+  .meters {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .meter {
+    position: relative;
+    height: 12px;
+    border-radius: 999px;
+    background: #0e0e0e;
+    border: 1px solid #222;
+    overflow: hidden;
+  }
+  .meter > .fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, #4caf50, #8bc34a);
+  }
+  .meter > .tick {
+    position: absolute; top: 0; bottom: 0;
+    width: 2px;
+    background: #fff3;
+  }
+  .note {
+    opacity: 0.8;
+    font-size: 13px;
+  }
+  .footer {
+    text-align: center;
+    opacity: 0.7;
+    font-size: 12px;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="game" class="panel">
+      <canvas id="canvas" width="1280" height="720"></canvas>
+    </div>
+    <div class="panel">
+      <div class="hud">
+        <div class="item">
+          <div class="label">Score</div>
+          <div id="score" class="value">0</div>
+        </div>
+        <div class="item">
+          <div class="label">Lives</div>
+          <div id="lives" class="value">3</div>
+        </div>
+        <div class="item">
+          <div class="label">Phase</div>
+          <div id="phase" class="value">Ready</div>
+        </div>
+        <div class="item">
+          <div class="label">Combo</div>
+          <div id="combo" class="value">x1</div>
+        </div>
+      </div>
+
+      <div class="btnrow">
+        <button id="startBtn">Start Shift</button>
+        <button id="restartBtn" style="display:none;">Restart</button>
+      </div>
+
+      <div class="controls">
+        <div class="badge">SPACE</div> Hold to pour &nbsp; 
+        <div class="badge">↑ / ↓</div> Tilt glass &nbsp; 
+        <div class="badge">M</div> Mute
+        <div class="badge">P</div> Pause
+        <div class="badge">ENTER</div> Start / Next pint
+      </div>
+
+      <div class="meters">
+        <div>
+          <div class="label">Tilt (ideal ≈ 45° initial, 0–10° final)</div>
+          <div class="meter"><div id="tiltFill" class="fill"></div><div class="tick" style="left:45%"></div></div>
+        </div>
+        <div>
+          <div class="label">Keg Pressure</div>
+          <div class="meter"><div id="pressureFill" class="fill"></div></div>
+        </div>
+        <div>
+          <div class="label">Settle Timer</div>
+          <div class="meter"><div id="settleFill" class="fill"></div><div id="settleSweetSpot" class="tick" style="left:50%"></div></div>
+        </div>
+      </div>
+
+      <p class="note big">Goal: ¾ glass on the first pour at ~45° tilt, let it settle, then top up to the brim with the glass upright. Don’t overflow, don’t underfill. Random pressure spikes and bar “distractions” will test your timing.</p>
+      <p class="note">Modes: This prototype uses a simple 3-minute Shift. Earn points per pint: Perfect (100), Near (75), Okay (50), Undrinkable (0 &minus; lose a life). Consecutive perfects boost combo.</p>
+      <div class="footer">“Sláinte!” when you nail it.</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Resize canvas to fit container while maintaining aspect ratio
+  function fitCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const ar = canvas.width / canvas.height;
+    let w = rect.width, h = rect.height;
+    if (w / h > ar) { w = h * ar; } else { h = w / ar; }
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+  }
+  window.addEventListener('resize', fitCanvas);
+  fitCanvas();
+
+  // HUD elements
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const phaseEl = document.getElementById('phase');
+  const comboEl = document.getElementById('combo');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const tiltFill = document.getElementById('tiltFill');
+  const pressureFill = document.getElementById('pressureFill');
+  const settleFill = document.getElementById('settleFill');
+  const settleSweetSpot = document.getElementById('settleSweetSpot');
+
+  // Audio (simple beeps using WebAudio)
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const audio = new AudioCtx();
+  let muted = false;
+  function beep(freq=440, dur=0.08, type='sine', vol=0.15) {
+    if (muted) return;
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.value = vol;
+    o.connect(g).connect(audio.destination);
+    o.start();
+    o.stop(audio.currentTime + dur);
+  }
+
+  // Game state
+  const PHASES = {
+    READY: 'Ready',
+    INIT: 'Initial Pour',
+    SETTLE: 'Settle',
+    TOPUP: 'Top Up',
+    EVAL: 'Evaluate',
+    OVER: 'Game Over',
+    PAUSE: 'Paused'
+  };
+
+  const state = {
+    phase: PHASES.READY,
+    score: 0,
+    lives: 3,
+    combo: 1,
+    timeLeft: 180, // seconds
+    pouring: false,
+    tiltDeg: 45,
+    glass: {
+      // proportions 0..1 of glass height filled with liquid & foam
+      liquid: 0,
+      foam: 0,
+    },
+    target: {
+      firstPour: 0.75,
+      settleTime: 6, // seconds
+      sweetSpotWidth: 1.5, // seconds
+      finalFill: 1.0
+    },
+    pressure: 1.0, // multiplier, random drift 0.8..1.3
+    pressureDrift: 0,
+    distraction: 0, // shake magnitude frames
+    rngSeed: Math.random() * 100000 | 0,
+    shiftActive: false,
+    paused: false,
+  };
+
+  function srand(seed) {
+    // simple LCG for deterministic mini-randomness when needed
+    state.rngSeed = (1664525 * state.rngSeed + 1013904223) | 0;
+    return Math.abs(state.rngSeed / 0x7fffffff);
+  }
+
+  function resetPint() {
+    state.glass.liquid = 0;
+    state.glass.foam = 0;
+    state.pressure = 0.95 + Math.random() * 0.2; // new keg feel
+    state.pressureDrift = (Math.random() - 0.5) * 0.04;
+    // randomize settle time a bit
+    state.target.settleTime = 5.5 + Math.random() * 2.5;
+    state.target.sweetSpotWidth = 1.0 + Math.random() * 1.2;
+    state.phase = PHASES.INIT;
+    phaseEl.textContent = state.phase;
+    settleTimer = 0;
+    settleFill.style.width = '0%';
+    placeSweetSpot();
+  }
+
+  function placeSweetSpot() {
+    // sweet spot visualization (only rough UI cue)
+    const center = 35 + Math.random() * 30; // 35%..65% of the meter
+    settleSweetSpot.style.left = center + '%';
+  }
+
+  // Controls
+  const keys = new Set();
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { state.pouring = true; if (audio.state === 'suspended') audio.resume(); e.preventDefault();}
+    keys.add(e.code);
+    if (e.code === 'Enter') {
+      if (!state.shiftActive) startShift();
+      else if (state.phase === PHASES.EVAL) resetPint();
+    }
+    if (e.code === 'KeyM') {
+      muted = !muted;
+      beep(220,0.05,'square',0.08);
+    }
+    if (e.code === 'KeyP') {
+      if (state.phase !== PHASES.OVER) {
+        state.paused = !state.paused;
+        state.phase = state.paused ? PHASES.PAUSE : PHASES.INIT;
+        phaseEl.textContent = state.phase;
+      }
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') state.pouring = false;
+    keys.delete(e.code);
+  });
+
+  function startShift() {
+    state.shiftActive = true;
+    state.timeLeft = 180;
+    state.score = 0;
+    state.lives = 3;
+    state.combo = 1;
+    state.paused = false;
+    state.phase = PHASES.READY;
+    phaseEl.textContent = state.phase;
+    scoreEl.textContent = state.score;
+    livesEl.textContent = state.lives;
+    comboEl.textContent = 'x' + state.combo;
+    startBtn.style.display = 'none';
+    restartBtn.style.display = 'none';
+    resetPint();
+  }
+
+  startBtn.addEventListener('click', startShift);
+  restartBtn.addEventListener('click', startShift);
+
+  let lastTime = performance.now();
+  let settleTimer = 0;
+
+  function update(dt) {
+    if (!state.shiftActive || state.paused || state.phase === PHASES.OVER) return;
+
+    // timers
+    state.timeLeft -= dt;
+    if (state.timeLeft <= 0) {
+      state.timeLeft = 0;
+      state.phase = PHASES.OVER;
+      phaseEl.textContent = PHASES.OVER;
+      restartBtn.style.display = 'inline-block';
+    }
+
+    // tilt control
+    if (keys.has('ArrowUp')) state.tiltDeg = Math.min(80, state.tiltDeg + 90 * dt);
+    if (keys.has('ArrowDown')) state.tiltDeg = Math.max(0, state.tiltDeg - 90 * dt);
+    tiltFill.style.width = Math.round((state.tiltDeg / 80) * 100) + '%';
+
+    // random distractions (screen shake)
+    if (Math.random() < 0.4 * dt) state.distraction = 6 + Math.random() * 10;
+
+    // pressure drift & spikes
+    state.pressure += state.pressureDrift * dt;
+    if (Math.random() < 0.15 * dt) {
+      // small spike/dip
+      state.pressure += (Math.random() - 0.5) * 0.15;
+    }
+    state.pressure = Math.max(0.6, Math.min(1.4, state.pressure));
+    pressureFill.style.width = Math.round((state.pressure - 0.6) / 0.8 * 100) + '%';
+
+    // Phase logic
+    switch (state.phase) {
+      case PHASES.INIT: {
+        // pouring to ~75%
+        const uprightness = 1 - (state.tiltDeg / 80); // 0 at 80°, ~1 at upright
+        const idealTilt = Math.abs(state.tiltDeg - 45);
+        let baseRate = 0.22; // per second at nominal pressure
+        let rate = baseRate * state.pressure * (0.7 + 0.6 * (1 - Math.min(1, idealTilt / 45)));
+        if (state.pouring) {
+          // overflow risk if too upright early
+          if (state.tiltDeg < 20) {
+            state.glass.foam += rate * 1.2 * dt;
+          } else {
+            state.glass.liquid += rate * dt;
+            // small foam accumulation even when ok
+            state.glass.foam += rate * 0.15 * dt * (1 + (Math.abs(45 - state.tiltDeg)/45));
+          }
+          if (Math.random() < 0.4 * dt) beep(800, 0.015, 'square', 0.03);
+        }
+
+        // foam compresses slowly
+        state.glass.foam = Math.max(0, state.glass.foam - 0.04 * dt);
+
+        // constraints
+        const total = state.glass.liquid + state.glass.foam;
+        if (total >= 1.02) { // overflow -> immediate fail
+          evaluate('overflow');
+        }
+
+        // Stop pouring to move to settle
+        // Auto-hint: if player achieves 70–80%, allow settle when they release pour
+        if (!state.pouring && total >= 0.70 && total <= 0.82) {
+          state.phase = PHASES.SETTLE;
+          phaseEl.textContent = state.phase;
+          settleTimer = 0;
+          beep(520,0.09,'sine',0.12);
+        }
+      } break;
+
+      case PHASES.SETTLE: {
+        // bubbles settle; foam decreases over time
+        settleTimer += dt;
+        // faster settle if they were close to ideal first pour and tilt
+        const closeness = 1 - Math.min(1, Math.abs(state.glass.liquid + state.glass.foam - state.target.firstPour) / 0.12);
+        const settleRate = 0.07 + 0.23 * closeness;
+        state.glass.foam = Math.max(0, state.glass.foam - settleRate * dt);
+
+        // UI settle meter progress
+        const progress = Math.min(1, settleTimer / state.target.settleTime);
+        settleFill.style.width = Math.round(progress * 100) + '%';
+
+        // If player pours during settle, penalty foam surge
+        if (state.pouring) {
+          state.glass.foam += 0.25 * dt;
+        }
+
+        // Press SPACE to start top-up when you think it's right; or auto if within window and they press
+        // sweet spot window centered on target time
+        // we accept the input and move to TOPUP when SPACE is pressed
+        if (keys.has('Space')) {
+          state.phase = PHASES.TOPUP;
+          phaseEl.textContent = state.phase;
+          beep(600,0.06,'triangle',0.08);
+        }
+
+        // if it goes too long (beyond 2x target), pint dies
+        if (settleTimer > state.target.settleTime * 2.2) {
+          evaluate('over_settle');
+        }
+      } break;
+
+      case PHASES.TOPUP: {
+        // now glass should be nearly upright
+        const uprightBonus = 1 - Math.min(1, Math.abs(state.tiltDeg - 5) / 30); // ideal ≈ 0–10°
+        let rate = 0.18 * state.pressure * (0.6 + 0.7 * uprightBonus);
+        if (state.pouring) {
+          state.glass.liquid += rate * dt;
+          // some foam if too tilted
+          state.glass.foam += rate * 0.12 * dt * (1 - uprightBonus);
+          if (Math.random() < 0.4 * dt) beep(700, 0.015, 'square', 0.03);
+        } else {
+          // small foam dissipate
+          state.glass.foam = Math.max(0, state.glass.foam - 0.05 * dt);
+        }
+        const total = state.glass.liquid + state.glass.foam;
+        if (total >= 1.02) evaluate('overflow');
+        // if they stop pouring around brim, allow evaluation
+        if (!state.pouring && total >= 0.98 && total <= 1.01) {
+          evaluate('complete');
+        }
+      } break;
+
+      case PHASES.EVAL:
+      case PHASES.OVER:
+      case PHASES.PAUSE:
+      default: break;
+    }
+
+    // lives/over
+    if (state.lives <= 0 && state.phase !== PHASES.OVER) {
+      state.phase = PHASES.OVER;
+      phaseEl.textContent = PHASES.OVER;
+      restartBtn.style.display = 'inline-block';
+    }
+  }
+
+  function evaluate(reason) {
+    state.phase = PHASES.EVAL;
+    phaseEl.textContent = PHASES.EVAL;
+
+    const total = state.glass.liquid + state.glass.foam;
+    // grading
+    let points = 0;
+    let grade = 'Undrinkable';
+    let slainte = false;
+
+    // First pour accuracy
+    const firstAcc = 1 - Math.min(1, Math.abs(state.target.firstPour - Math.min(1, state.glass.liquid + state.glass.foam)) / 0.12);
+
+    // Settle timing accuracy (how close to target when they triggered TOPUP)
+    const settleAcc = 1 - Math.min(1, Math.abs(settleTimer - state.target.settleTime) / (state.target.sweetSpotWidth));
+
+    // Final fill accuracy
+    const finalAcc = 1 - Math.min(1, Math.abs(1.0 - total) / 0.04);
+
+    if (reason === 'overflow' || total > 1.02) {
+      points = 0;
+      grade = 'Overflow!';
+      state.lives -= 1;
+      livesEl.textContent = state.lives;
+      state.combo = 1;
+      comboEl.textContent = 'x' + state.combo;
+      beep(120,0.15,'sawtooth',0.2);
+    } else if (reason === 'over_settle') {
+      points = 0;
+      grade = 'Over-settled';
+      state.lives -= 1;
+      livesEl.textContent = state.lives;
+      state.combo = 1;
+      comboEl.textContent = 'x' + state.combo;
+      beep(140,0.15,'sawtooth',0.2);
+    } else {
+      // Weighted scoring
+      const composite = Math.max(0, (firstAcc * 0.35 + settleAcc * 0.35 + finalAcc * 0.30));
+      if (composite > 0.92) { points = 100; grade = 'Perfect Pint'; slainte = true; }
+      else if (composite > 0.80) { points = 75; grade = 'Near Perfect'; }
+      else if (composite > 0.62) { points = 50; grade = 'Okay'; }
+      else { points = 0; grade = 'Undrinkable'; state.lives -= 1; livesEl.textContent = state.lives; }
+
+      if (points === 100) {
+        state.combo = Math.min(10, state.combo + 1);
+        beep(880,0.08,'sine',0.18); beep(660,0.07,'sine',0.12);
+      } else if (points > 0) {
+        state.combo = Math.min(10, state.combo + 0); // keep combo
+        beep(520,0.06,'triangle',0.12);
+      } else {
+        state.combo = 1;
+        beep(180,0.12,'sawtooth',0.18);
+      }
+      comboEl.textContent = 'x' + state.combo;
+      points *= state.combo;
+      state.score += points;
+      scoreEl.textContent = state.score;
+    }
+
+    // Show floating text
+    floatingTexts.push({
+      x: canvas.width * 0.72, y: canvas.height * 0.18,
+      text: grade + (points>0?`  +${points}`:''),
+      life: 1.8
+    });
+    if (slainte) {
+      floatingTexts.push({ x: canvas.width * 0.5, y: canvas.height * 0.5, text: 'Sláinte!', life: 1.2 });
+    }
+  }
+
+  // Rendering helpers
+  function drawGlass(cx, cy, w, h) {
+    // Draw stylized pint glass and contents
+    const r = w * 0.18;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Shake effect
+    if (state.distraction > 0) {
+      const s = state.distraction;
+      ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
+      state.distraction -= 1;
+    }
+
+    // Base shadow/bar
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(-w*0.6, h*0.5, w*1.2, 10);
+    ctx.globalAlpha = 1;
+
+    // Tap head & stream
+    drawTap(cx - w*0.6, cy - h*0.5, w*0.18, h*0.35);
+
+    // Glass outline
+    const grd = ctx.createLinearGradient(0, -h/2, 0, h/2);
+    grd.addColorStop(0, '#0b0b0b');
+    grd.addColorStop(1, '#111');
+
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.fillStyle = grd;
+
+    // Pint silhouette
+    ctx.beginPath();
+    ctx.moveTo(-w/2 + r*0.3, -h/2);
+    ctx.quadraticCurveTo(0, -h/2 - r*0.1, w/2 - r*0.3, -h/2);
+    ctx.lineTo(w/2, h/2 - r);
+    ctx.quadraticCurveTo(w/2 - r*0.2, h/2, 0, h/2);
+    ctx.quadraticCurveTo(-w/2 + r*0.2, h/2, -w/2, h/2 - r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Contents
+    const total = Math.min(1.1, state.glass.liquid + state.glass.foam);
+    const fillH = h * total - 6;
+    const foamH = h * Math.min(total, state.glass.foam);
+
+    // Liquid (dark ruby)
+    const liquidGrd = ctx.createLinearGradient(0, -h/2, 0, h/2);
+    liquidGrd.addColorStop(0, '#1b0f0f');
+    liquidGrd.addColorStop(1, '#120909');
+    ctx.fillStyle = liquidGrd;
+    ctx.fillRect(-w/2 + 8, h/2 - fillH, w - 16, fillH - foamH);
+
+    // Foam head
+    ctx.fillStyle = '#f1f1e8';
+    ctx.fillRect(-w/2 + 8, h/2 - foamH, w - 16, foamH);
+
+    // Foam top rounded
+    ctx.beginPath();
+    ctx.fillStyle = '#f6f6ee';
+    const topY = h/2 - foamH;
+    ctx.moveTo(-w/2 + 8, topY);
+    ctx.quadraticCurveTo(0, topY - 6, w/2 - 8, topY);
+    ctx.lineTo(w/2 - 8, topY + 6);
+    ctx.lineTo(-w/2 + 8, topY + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ideal markers
+    drawMarkers(cx, cy, w, h);
+
+    ctx.restore();
+  }
+
+  function drawTap(x, y, w, h) {
+    ctx.save();
+    ctx.translate(x, y);
+    // body
+    ctx.fillStyle = '#2b2b2b';
+    ctx.fillRect(-w/2, 0, w, h);
+    // handle
+    ctx.fillStyle = '#3a3a3a';
+    ctx.fillRect(-w*0.2, -h*0.4, w*0.4, h*0.4);
+    // nozzle
+    ctx.fillStyle = '#999';
+    ctx.fillRect(-w*0.1, h, w*0.2, h*0.12);
+
+    // stream when pouring
+    if (state.pouring && (state.phase === PHASES.INIT || state.phase === PHASES.TOPUP)) {
+      ctx.fillStyle = '#eae8e0';
+      const streamW = w*0.1 + Math.min(10, 10*state.pressure);
+      ctx.fillRect(-streamW/2, h*1.05, streamW, 40);
+    }
+    ctx.restore();
+  }
+
+  function drawMarkers(cx, cy, w, h) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = '#ffffff22';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,4]);
+
+    // 75% marker
+    const y75 = h/2 - h*0.75;
+    ctx.beginPath();
+    ctx.moveTo(-w/2 + 10, y75);
+    ctx.lineTo(w/2 - 10, y75);
+    ctx.stroke();
+
+    // brim marker
+    const y100 = -h/2 + 10;
+    ctx.beginPath();
+    ctx.moveTo(-w/2 + 10, y100);
+    ctx.lineTo(w/2 - 10, y100);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  const floatingTexts = [];
+
+  function render(dt) {
+    // background
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    // pub vignette
+    const grd = ctx.createRadialGradient(canvas.width*0.7, canvas.height*1.2, 120, canvas.width*0.7, canvas.height*1.2, canvas.width*0.9);
+    grd.addColorStop(0, '#0d0d0d');
+    grd.addColorStop(1, '#050505');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+
+    // HUD text top-left
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.9;
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.fillText(`Time: ${Math.ceil(state.timeLeft)}s`, 24, 34);
+    ctx.fillText(`Phase: ${state.phase}`, 24, 60);
+    ctx.globalAlpha = 1;
+
+    // draw glass
+    drawGlass(canvas.width*0.58, canvas.height*0.66, 280, 480);
+
+    // draw tilt indicator gauge on canvas (big dial)
+    drawTiltGauge(canvas.width*0.15, canvas.height*0.70, 120);
+
+    // floating evaluation texts
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const ft = floatingTexts[i];
+      ft.life -= dt;
+      if (ft.life <= 0) { floatingTexts.splice(i,1); continue; }
+      ctx.globalAlpha = Math.max(0, ft.life / 1.8);
+      ctx.font = 'bold 28px system-ui, sans-serif';
+      ctx.fillStyle = '#f3f3f3';
+      ctx.textAlign = 'center';
+      ctx.fillText(ft.text, ft.x, ft.y - (1.8 - ft.life) * 30);
+      ctx.textAlign = 'left';
+      ctx.globalAlpha = 1;
+    }
+
+    // instructions overlay
+    if (!state.shiftActive) {
+      drawIntro();
+    } else if (state.phase === PHASES.EVAL) {
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0,0,canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 32px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Pint evaluated', canvas.width/2, canvas.height/2 - 40);
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillText('Press ENTER for next pint', canvas.width/2, canvas.height/2 + 10);
+      ctx.textAlign = 'left';
+    } else if (state.phase === PHASES.OVER) {
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0,0,canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 36px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Shift Over!', canvas.width/2, canvas.height/2 - 60);
+      ctx.font = '24px system-ui, sans-serif';
+      ctx.fillText(`Final Score: ${state.score}`, canvas.width/2, canvas.height/2 - 20);
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillText('Click Restart to try again', canvas.width/2, canvas.height/2 + 20);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  function drawIntro() {
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.fillText('Guinness Pour', canvas.width/2, canvas.height/2 - 120);
+    ctx.font = '20px system-ui, sans-serif';
+    ctx.fillText('Aim for a perfect pint: ¾ first pour at ~45°, let it settle, then top up to the brim upright.', canvas.width/2, canvas.height/2 - 80);
+    ctx.fillText('Random pressure spikes and pub distractions keep you honest.', canvas.width/2, canvas.height/2 - 50);
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText('Controls: SPACE = Pour, ↑/↓ = Tilt, ENTER = Start/Next, P = Pause, M = Mute', canvas.width/2, canvas.height/2 + 10);
+    ctx.fillText('Press ENTER or click Start Shift.', canvas.width/2, canvas.height/2 + 40);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawTiltGauge(x, y, radius) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = '#2b2b2b';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, Math.PI * 0.25, Math.PI * 0.75);
+    ctx.stroke();
+
+    // ticks
+    for (let i=0; i<=10; i++) {
+      const t = Math.PI * (0.25 + (i/10)*0.5);
+      const x1 = Math.cos(t) * (radius-8), y1 = Math.sin(t) * (radius-8);
+      const x2 = Math.cos(t) * (radius-24), y2 = Math.sin(t) * (radius-24);
+      ctx.strokeStyle = i===5 ? '#ffffffcc' : '#ffffff55';
+      ctx.lineWidth = i===5 ? 4 : 2;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    }
+
+    // needle (maps 0..80° → arc)
+    const t = Math.PI * (0.25 + (state.tiltDeg/80)*0.5);
+    const nx = Math.cos(t) * (radius-14), ny = Math.sin(t) * (radius-14);
+    ctx.strokeStyle = '#f5f5f5';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(nx,ny); ctx.stroke();
+
+    // label
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.round(state.tiltDeg)}°`, 0, radius + 24);
+    ctx.restore();
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt);
+    render(dt);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Pause on blur
+  window.addEventListener('blur', () => { state.paused = true; phaseEl.textContent = PHASES.PAUSE; });
+
+  // expose for debugging
+  window.__game = { state };
+})();
+</script>
+
+</body>
+</html>
